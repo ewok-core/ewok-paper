@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+    <title>Sentence Plausibility</title>
+
+    <script src="../static/jspsych/dist/jspsych.js"></script>
+
+    <!-- ------STIMULI------ -->
+    <script src="../static/data/gold_items.js"></script>
+
+    <script src="../static/utils.js"></script>
+
+    <script src="../static/jspsych/dist/plugin-html-keyboard-response.js"></script>
+    <script src="../static/jspsych/dist/plugin-instructions.js"></script>
+    <script src="../static/jspsych/dist/plugin-survey-text.js"></script>
+    <script src="../static/jspsych/dist/plugin-survey-likert.js"></script>
+    <script src="../static/jspsych/dist/plugin-survey-multi-choice.js"></script>
+    <script src="../static/jspsych/dist/plugin-call-function.js"></script>
+    <script src="../static/jspsych/dist/plugin-html-button-response.js"></script>
+    <link href="../static/jspsych/dist/jspsych.css" rel="stylesheet">
+    <link href="../static/expt.css" rel="stylesheet">
+</head>
+
+<body></body>
+<script>
+
+    function getRandomInt(min, max) {
+        min = Math.ceil(min);
+        max = Math.floor(max);
+        return Math.floor(Math.random() * (max - min) + min); // The maximum is exclusive and the minimum is inclusive
+    }
+
+    // var paradigm = "choice";
+    var paradigm = "likert";
+    // var all_items = choice_stims2;
+    // var all_items = likert_stims4;
+
+    var all_items = null;
+    var stim_index = null;
+    // var host = 'http://evlabwebapps.mit.edu:8770/';
+    var host = null; // redacted!
+    var start_url = host + "start"; // supports GET and returns `idx` and `stim` as JSON
+    var finish_url = host + "complete"; // supports POST with `idx` as a parameter
+
+    // send a GET request to `start_url` to get stimuli and idx
+    var request = new XMLHttpRequest();
+    request.open('GET', start_url, false);  // `false` makes the request synchronous
+    request.send(null);
+
+    if (request.status === 200) {
+        var data = JSON.parse(request.responseText);
+        stim_index = data.idx;
+        all_items = data.stim;
+        console.log('stim_index:', stim_index);
+        console.log('all_items:', all_items);
+    } else {
+        console.error('HTTP request failed with status', request.status);
+    }
+
+    console.log('!!! stim_index:', stim_index);
+    console.log('!!! all_items:', all_items);
+
+    window.onbeforeunload = function () {
+        return true;
+    };
+
+    // print to console only if debug_mode is true (defined in utils.js)
+    function debug_print(x) {
+        if (debug_mode) {
+            console.log(x)
+        }
+    }
+
+    // Fisher-Yates shuffle
+    // FYshuffle(all_items);
+
+    // SETUP JSPSYCH
+    var jsPsych = initJsPsych({
+        show_progress_bar: true,
+        auto_update_progress_bar: true,
+        on_finish:
+            function () {
+                window.location = "https://app.prolific.com/submissions/complete?cc=REDACTED"
+            },
+        override_safe_mode: false,
+    });
+
+    // capture info from Prolific
+    var subject_id = jsPsych.data.getURLVariable('PROLIFIC_PID');
+    var study_id = jsPsych.data.getURLVariable('STUDY_ID');
+    var session_id = jsPsych.data.getURLVariable('SESSION_ID');
+
+    jsPsych.data.addProperties({
+        subject_id: subject_id,
+        study_id: study_id,
+        session_id: session_id
+    });
+
+
+    // EXPERIMENT GLOBAL VARIABLES ----------------------------------------------------------------
+    // generate a random ID for the current participant, which will be used to save their data file
+    var participant_id = jsPsych.randomization.randomID();
+    // interval object for updating countdown timer on break screens
+    var interval = null;
+    // number of total trials in expt, used to update progress bar by correct amount
+    var n_trials = trials_per_block * breaks_per_exp;
+
+    console.log(all_items.length);
+    // console.log(all_counts);
+
+    // EXPERIMENTAL TIMELINE
+    var timeline = [];
+
+    // WELCOME PAGE
+    var instr = {
+        type: jsPsychInstructions,
+        pages: consent,
+        show_clickable_nav: true
+    };
+    timeline.push(instr);
+
+    // QUESTIONNAIRE 
+    var trial = {
+        type: jsPsychSurveyMultiChoice,
+        preamble: "<p style='font-size: 25px'> " +
+            "Please answer the background questions below. The only restriction to being paid " +
+            "is achieving the accuracy requirements as detailed on the next page (to block 'bots' who answer " +
+            "randomly). Payment is NOT dependent on your answers to the following background " +
+            "questions on country and language. " +
+            "</p>",
+        questions: [
+            {
+                prompt: "Which country are you from?",
+                options: ["USA", "UK", "Canada", "Australia", "New Zealand", "India", "Other", "Prefer not to answer"],
+                horizontal: false,
+                required: true,
+                name: 'Country'
+            },
+            {
+                prompt: "What is your native language?",
+                options: ["English", "Other"],
+                horizontal: false,
+                required: true,
+                name: 'Language'
+            },
+            {
+                prompt: "What is your gender?",
+                options: ["Male", "Female", "Other", "Prefer not to answer"],
+                horizontal: false,
+                required: true,
+                name: 'Gender'
+            },
+        ],
+        randomize_question_order: false
+    };
+    timeline.push(trial);
+
+    var trial = {
+        type: jsPsychSurveyText,
+        questions: [
+            {
+                prompt: '<p>How old are you?</p>',
+                name: 'Age',
+                required: true,
+                columns: 4,
+            },
+        ]
+    }
+    timeline.push(trial);
+
+    // INSTRUCTIONS (instructions can be edited in utils.js)
+    if (paradigm == 'choice') {
+        var instr = {
+            type: jsPsychInstructions,
+            pages: task_instructions_choice,
+            show_clickable_nav: true
+        };
+    } else if (paradigm == 'likert') {
+        var instr = {
+            type: jsPsychInstructions,
+            pages: task_instructions_likert,
+            show_clickable_nav: true
+        };
+    }
+    timeline.push(instr);
+
+    jsPsych.data.addProperties({ items_completed: 0 });
+
+    var limit = all_items.length; // show all items in stimset (for now)
+    for (i = 0; i < Math.min(all_items.length, limit); i++) {
+
+        // random coinflip:
+        var coinflip = FYshuffle([0, 1])[0];
+        var coinflip2 = 2 + FYshuffle([0, 1])[0];
+
+        if (paradigm == 'choice') {
+            var choice_trial = {
+                type: jsPsychSurveyText,
+                // randomize_question_order: true,
+                scale_width: 'auto',
+                preamble: "",
+                questions: [
+                    {
+                        prompt: item_instructions_choice[0] +
+                            "1. " + all_items[i]["context1"] +
+                            "<br>" +
+                            "2. " + all_items[i]['context2'] +
+                            "<br>" +
+                            item_instructions_choice[1] + all_items[i]["target"] +
+                            "<br>" +
+                            item_instructions_choice[2],
+                        name: "1. " + all_items[i]["context1"] +
+                            "<br>" +
+                            "2. " + all_items[i]['context2'] +
+                            "<br>" +
+                            item_instructions_choice[1] + all_items[i]["target"],
+                        required: true,
+                        columns: 4
+                    },
+                    // { prompt: item_instructions_choice[2], name: all_items[i] + ',' + coinflip, required: true, columns: 4 },
+                ],
+                data: all_items[i],
+                show_clickable_nav: true
+            };
+            timeline.push(choice_trial);
+
+            //
+        } else if (paradigm == 'likert') {
+            var likert_trial = {
+                type: jsPsychSurveyText,
+                // randomize_question_order: true,
+                scale_width: 'auto',
+                preamble: "",
+                questions: [
+                    {
+                        prompt: item_instructions_likert[0] +
+                            "<br>" +
+                            all_items[i]["context"] + ' ' + all_items[i]["target"] +
+                            "<br>" +
+                            item_instructions_likert[1],
+                        name: all_items[i]["context"] + ' ' + all_items[i]["target"],
+                        required: true,
+                        columns: 4
+                    },
+                    // { prompt: item_instructions_choice[2], name: all_items[i] + ',' + coinflip, required: true, columns: 4 },
+                ],
+                data: all_items[i],
+                show_clickable_nav: true
+            };
+
+            timeline.push(likert_trial);
+        }
+
+
+    }
+
+    // FINAL SAVE DATA
+    var save_screen = {
+        type: jsPsychCallFunction,
+        func: function () {
+            jsPsych.setProgressBar(1.0);
+            saveData(participant_id, jsPsych.data.get().json());
+            console.log('saving data for participant ' + participant_id);
+            // send POST request containing `stim_index` to `finish_url`
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", finish_url, true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.send(JSON.stringify({ idx: stim_index }));
+
+        }
+    }
+    timeline.push(save_screen);
+
+    var finished = {
+        type: jsPsychHtmlButtonResponse,
+        stimulus: '<b>Experiment finished!</b> You completed ' + Math.min(limit, all_items.length) + ' items. Thank you for participating. Press "Continue" below and you will be redirected back to prolific now (ignore the prompt your browser might give you about leaving with unsaved changes). If redirecting fails, just enter the following completion code: ' + completion_code + '<br>',
+        choices: ['Continue'],
+        prompt: ""
+    };
+    timeline.push(finished);
+
+    jsPsych.run(timeline);
+
+</script>
+
+
+</html>

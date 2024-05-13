@@ -1,0 +1,10 @@
+*.egg-info
+.DS_Store
+.Rhistory
+__pycache__
+html/
+output/
+.Rproj.user
+analyses/scripts/data/
+config/
+*.csv
